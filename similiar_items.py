@@ -2,6 +2,7 @@ from collections import defaultdict
 import random
 import os
 from bs4 import BeautifulSoup
+import time
 
 
 class Shingling:
@@ -184,62 +185,93 @@ def parse_sgm(file_path):
         soup = BeautifulSoup(file, 'html.parser')
         texts = [reuters.body.get_text() for reuters in soup.find_all('reuters') if reuters.body]
         return texts
+    
+# Function to process documents through all stages
+def process_documents(docs, shingler, minhasher, lsh):
+    # Shingling
+    shingled_docs = [shingler.shingle_document(doc) for doc in docs]
 
-file_path = os.path.join("extracted_files", "reut2-000.sgm")
+    # MinHashing
+    signatures = [minhasher.create_signature(shingles) for shingles in shingled_docs]
 
-articles = parse_sgm(file_path)
+    # LSH
+    similar_pairs = lsh.find_similar(signatures)
+    return similar_pairs
 
-# Shingling articles (choose an appropriate k value)
-k = 10  # Length of each shingle
+def evaluation():
+    # Load the articles
+    file_path = os.path.join("extracted_files", "reut2-000.sgm")
+    articles = parse_sgm(file_path)
 
-# Shingling
-shingle_length = 10
-shingler = Shingling(shingle_length)
-shingled_docs = [shingler.shingle_document(doc) for doc in articles[:250]]
+    # Initialize the classes
+    shingler = Shingling(k=10)
+    minhasher = MinHashing(n=100, universe_size=10000)
+    lsh = LSH(band_size=10, threshold=0.5)
 
-# Example: print shingles for the first article
-#print(shingled_docs[0])
+    # Define the different batch sizes
+    batch_sizes = [10, 50, 100, 150, 200, 250]
 
-
-comparer = CompareSets()
-res = comparer.jaccard_similarity(shingled_docs[0], shingled_docs[1])
-
-print(res)
-
-# MinHashing
-signature_length = 100
-universe_size = 10000
-minhasher = MinHashing(signature_length, universe_size)
-signatures = [minhasher.create_signature(shingles) for shingles in shingled_docs]
-
-compare_sig = CompareSignatures()
-# sig_res = compare_sig.signature_similarity(signatures[4], signatures[16])
-# print(sig_res)
+    # Evaluate runtime for different batch sizes
+    for batch_size in batch_sizes:
+        start_time = time.time()
+        process_documents(articles[:batch_size], shingler, minhasher, lsh)
+        end_time = time.time()
+        print(f"Runtime for {batch_size} articles: {end_time - start_time:.2f} seconds")
 
 
-# LSH (Optional)
-band_size = 10
-threshold = 0.00000000000001
-lsh = LSH(band_size, threshold)
-similar_pairs = lsh.find_similar(signatures)
+def general_tests():
+    file_path = os.path.join("extracted_files", "reut2-000.sgm")
 
-# Display similar pairs
-print("Similar Document Pairs:")
-for pair in similar_pairs:
-    doc1, doc2 = pair
-    jaccard_sim = comparer.jaccard_similarity(shingled_docs[doc1], shingled_docs[doc2])
-    minhash_sim = compare_sig.signature_similarity(signatures[doc1], signatures[doc2])
+    articles = parse_sgm(file_path)
 
-    print(f"Document {doc1} is similar to Document {doc2}")
-    print(f"Jaccard Similarity (Shingle Sets): {jaccard_sim:.2f}")
-    print(f"MinHash Signature Similarity: {minhash_sim:.2f}")
+    k = 10  # Length of each shingle
 
-# text1= shingler.get_text_shingles(articles[29])
-# text2= shingler.get_text_shingles(articles[52])
+    # Shingling
+    shingle_length = 10
+    shingler = Shingling(shingle_length)
+    shingled_docs = [shingler.shingle_document(doc) for doc in articles[:250]]
 
-# print(articles[29])
-# print("-----------------")
-# print(articles[52])
+    comparer = CompareSets()
+    res = comparer.jaccard_similarity(shingled_docs[0], shingled_docs[1])
+
+    print(res)
+
+    # MinHashing
+    signature_length = 100
+    universe_size = 10000
+    minhasher = MinHashing(signature_length, universe_size)
+    signatures = [minhasher.create_signature(shingles) for shingles in shingled_docs]
+
+    compare_sig = CompareSignatures()
+    # sig_res = compare_sig.signature_similarity(signatures[4], signatures[16])
+    # print(sig_res)
+
+
+    # LSH 
+    band_size = 10
+    threshold = 0.00000000000001
+    lsh = LSH(band_size, threshold)
+    similar_pairs = lsh.find_similar(signatures)
+
+    # Display similar pairs
+    print("Similar Document Pairs:")
+    for pair in similar_pairs:
+        doc1, doc2 = pair
+        jaccard_sim = comparer.jaccard_similarity(shingled_docs[doc1], shingled_docs[doc2])
+        minhash_sim = compare_sig.signature_similarity(signatures[doc1], signatures[doc2])
+
+        print(f"Document {doc1} is similar to Document {doc2}")
+        print(f"Jaccard Similarity (Shingle Sets): {jaccard_sim:.2f}")
+        print(f"MinHash Signature Similarity: {minhash_sim:.2f}")
+
+    # text1= shingler.get_text_shingles(articles[29])
+    # text2= shingler.get_text_shingles(articles[52])
+
+    # print(articles[29])
+    # print("-----------------")
+    # print(articles[52])
 
 
 # print(text1.intersection(text2))
+
+evaluation()
